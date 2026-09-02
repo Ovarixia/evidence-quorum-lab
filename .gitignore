@@ -1,0 +1,7 @@
+node_modules/
+dist/
+receipts/*.json
+.DS_Store
+*.log
+.idea/
+.vscode/

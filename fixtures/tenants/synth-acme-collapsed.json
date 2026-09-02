@@ -1,0 +1,11 @@
+{
+  "id": "synth-acme-collapsed",
+  "seed": "eq-lab-v1/collapsed",
+  "displayName": "Acme synthetic — IdP, SIEM, and ITSM admins are the same identity",
+  "expectedObservation": "DEGRADED",
+  "identityAliases": {
+    "idp-superadmin": "platform-superadmin",
+    "siem-admin": "platform-superadmin",
+    "itsm-admin": "platform-superadmin"
+  }
+}

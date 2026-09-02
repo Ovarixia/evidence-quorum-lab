@@ -1,0 +1,6 @@
+{
+  "id": "synth-acme-healthy",
+  "seed": "eq-lab-v1/healthy",
+  "displayName": "Acme synthetic — independent erasers, all sensors present",
+  "expectedObservation": "HEALTHY"
+}
