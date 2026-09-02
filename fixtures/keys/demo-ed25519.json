@@ -1,0 +1,7 @@
+{
+  "keyId": "eq-lab-demo-v1",
+  "warning": "DEMO KEY. Committed on purpose. Anyone who clones this repo can sign receipts. Not a trust root. Pin --trust only for lab verification.",
+  "alg": "Ed25519",
+  "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAm4C6A1Pk+5ly2gT4JY1S2T95Yuzq9YuIlczFlF0paqo=\n-----END PUBLIC KEY-----\n",
+  "privateKeyPem": "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEICHh2siz+C5wyKxjBciSC1QWM/RhjFUd0V7XanUpIItY\n-----END PRIVATE KEY-----\n"
+}

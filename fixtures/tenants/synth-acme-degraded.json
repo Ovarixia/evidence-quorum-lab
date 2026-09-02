@@ -1,0 +1,13 @@
+{
+  "id": "synth-acme-degraded",
+  "seed": "eq-lab-v1/degraded",
+  "displayName": "Acme synthetic — SIEM copy wiped, remaining paths intact",
+  "expectedObservation": "DEGRADED",
+  "faults": [
+    {
+      "kind": "path",
+      "id": "admin.siem",
+      "status": "missing"
+    }
+  ]
+}

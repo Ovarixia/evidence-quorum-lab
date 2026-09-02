@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm start
+      - name: Verify signed receipts (tsx and compiled CLI)
+        run: |
+          npx tsx src/cli.ts verify receipts/synth-acme-healthy.receipt.json --trust fixtures/keys/demo-ed25519.pub.pem
+          npx tsx src/cli.ts verify receipts/synth-acme-degraded.receipt.json --trust fixtures/keys/demo-ed25519.pub.pem
+          npx tsx src/cli.ts verify receipts/synth-acme-unknown.receipt.json --trust fixtures/keys/demo-ed25519.pub.pem
+          npx tsx src/cli.ts verify receipts/synth-acme-collapsed.receipt.json --trust fixtures/keys/demo-ed25519.pub.pem
+          node dist/cli.js verify receipts/synth-acme-healthy.receipt.json --trust fixtures/keys/demo-ed25519.pub.pem

@@ -1,0 +1,13 @@
+{
+  "id": "synth-acme-unknown",
+  "seed": "eq-lab-v1/unknown",
+  "displayName": "Acme synthetic — cluster audit sink unreachable",
+  "expectedObservation": "UNKNOWN",
+  "faults": [
+    {
+      "kind": "path",
+      "id": "deploy.cluster",
+      "status": "unreachable"
+    }
+  ]
+}

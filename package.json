@@ -1,0 +1,43 @@
+{
+  "name": "evidence-quorum-lab",
+  "version": "0.1.0",
+  "description": "When a critical action happens, how many independent evidence paths must an adversary break to make it invisible?",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "eq-lab": "./dist/cli.js"
+  },
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "tsx src/cli.ts run",
+    "lab": "tsx src/cli.ts run",
+    "verify": "tsx src/cli.ts verify",
+    "test": "tsx --test tests/*.test.ts",
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build"
+  },
+  "files": [
+    "dist",
+    "fixtures",
+    "LICENSE",
+    "README.md"
+  ],
+  "keywords": [
+    "audit",
+    "evidence",
+    "quorum",
+    "min-cut",
+    "canary",
+    "ed25519"
+  ],
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}
