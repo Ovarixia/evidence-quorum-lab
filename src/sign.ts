@@ -9,12 +9,14 @@ import {
 import { demoKeyPath } from "./paths.js";
 import {
   recomputeFromPayload,
+  LAB_EPOCH,
   type ReceiptPayload,
   type SignedReceipt,
 } from "./receipt.js";
+import { ACTIONS } from "./model/scenarios.js";
 
 export type { SignedReceipt } from "./receipt.js";
-import { RECEIPT_SPEC } from "./types.js";
+import { NON_CLAIMS, RECEIPT_SPEC } from "./types.js";
 
 export function signPayload(payload: ReceiptPayload): SignedReceipt {
   const key = loadLabKey(demoKeyPath);
@@ -42,11 +44,100 @@ export interface VerifyResult {
   issues: VerifyIssue[];
 }
 
+const OBSERVATIONS = new Set(["HEALTHY", "DEGRADED", "UNKNOWN"]);
+const SENSOR_STATUSES = new Set(["present", "missing", "unreachable"]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sameIds(actual: string[], expected: string[]): boolean {
+  return actual.length === expected.length &&
+    new Set(actual).size === actual.length &&
+    expected.every((id) => actual.includes(id));
+}
+
+function validateReceiptStructure(value: unknown): VerifyIssue[] {
+  const issues: VerifyIssue[] = [];
+  if (!isRecord(value) || !isRecord(value.payload) || !isRecord(value.signature)) {
+    return [{ code: "schema", message: "receipt must contain payload and signature objects" }];
+  }
+  const payload = value.payload;
+  const signature = value.signature;
+  if (typeof value.payloadSha256 !== "string" ||
+      typeof signature.alg !== "string" ||
+      typeof signature.keyId !== "string" ||
+      typeof signature.publicKeyPem !== "string" ||
+      typeof signature.publicKeySha256 !== "string" ||
+      typeof signature.sig !== "string") {
+    issues.push({ code: "schema", message: "receipt signature fields must be strings" });
+  }
+  if (!isRecord(payload.tenant) || typeof payload.tenant.seed !== "string" ||
+      !Array.isArray(payload.scenarios) || typeof payload.observation !== "string" ||
+      !OBSERVATIONS.has(payload.observation) || typeof payload.expectedObservation !== "string" ||
+      !OBSERVATIONS.has(payload.expectedObservation)) {
+    issues.push({ code: "schema", message: "receipt payload has invalid tenant, scenarios, or observation fields" });
+    return issues;
+  }
+
+  const scenarios = payload.scenarios;
+  const scenarioIds = scenarios.map((item) => isRecord(item) ? item.actionId : undefined);
+  if (scenarioIds.some((id) => typeof id !== "string") ||
+      !sameIds(scenarioIds as string[], ACTIONS.map((action) => action.id))) {
+    issues.push({
+      code: "scenario-set",
+      message: "receipt must contain each canonical critical action exactly once",
+    });
+  }
+
+  for (const item of scenarios) {
+    if (!isRecord(item) || typeof item.actionId !== "string") continue;
+    const action = ACTIONS.find((candidate) => candidate.id === item.actionId);
+    if (!action || !Array.isArray(item.paths) || !Array.isArray(item.canaries)) {
+      issues.push({ code: "schema", message: `${item.actionId}: invalid paths or canaries` });
+      continue;
+    }
+    const pathIds = item.paths.map((path) => isRecord(path) ? path.pathId : undefined);
+    const canaryIds = item.canaries.map((canary) => isRecord(canary) ? canary.canaryId : undefined);
+    if (pathIds.some((id) => typeof id !== "string") ||
+        !sameIds(pathIds as string[], action.paths.map((path) => path.id))) {
+      issues.push({ code: "path-set", message: `${item.actionId}: paths must match the canonical action exactly` });
+    }
+    if (canaryIds.some((id) => typeof id !== "string") ||
+        !sameIds(canaryIds as string[], action.canaries.map((canary) => canary.id))) {
+      issues.push({ code: "canary-set", message: `${item.actionId}: canaries must match the canonical action exactly` });
+    }
+    const invalidStatus = [...item.paths, ...item.canaries].some(
+      (entry) => !isRecord(entry) || typeof entry.status !== "string" || !SENSOR_STATUSES.has(entry.status),
+    );
+    if (invalidStatus || typeof item.observation !== "string" || !OBSERVATIONS.has(item.observation)) {
+      issues.push({ code: "sensor-status", message: `${item.actionId}: invalid observation or sensor status` });
+    }
+  }
+  return issues;
+}
+
+function scenarioSecurityProjection(scenario: ReceiptPayload["scenarios"][number]): unknown {
+  return {
+    actionId: scenario.actionId,
+    declaredQuorum: scenario.declaredQuorum,
+    observation: scenario.observation,
+    designIdentityMinCut: scenario.designIdentityMinCut,
+    designComponentMinCut: scenario.designComponentMinCut,
+    withCanariesIdentityMinCut: scenario.withCanariesIdentityMinCut,
+    withCanariesComponentMinCut: scenario.withCanariesComponentMinCut,
+    observedIntactIdentityMinCut: scenario.observedIntactIdentityMinCut,
+    quorumMet: scenario.quorumMet,
+    canaries: scenario.canaries.map(({ canaryId, nonce, status }) => ({ canaryId, nonce, status })),
+  };
+}
+
 export function verifyReceipt(
   receipt: SignedReceipt,
   trustedPublicKeyPem?: string,
 ): VerifyResult {
-  const issues: VerifyIssue[] = [];
+  const issues = validateReceiptStructure(receipt);
+  if (issues.length > 0) return { ok: false, issues };
   const { payload, signature } = receipt;
 
   if (payload.spec !== RECEIPT_SPEC) {
@@ -71,26 +162,43 @@ export function verifyReceipt(
     });
   }
 
-  const sigOk = verifyCanonical(
-    payload,
-    signature.publicKeyPem,
-    signature.sig,
-  );
-  if (!sigOk) {
+  try {
+    if (!verifyCanonical(payload, signature.publicKeyPem, signature.sig)) {
+      issues.push({
+        code: "signature",
+        message: "Ed25519 signature does not verify over canonical payload",
+      });
+    }
+  } catch {
     issues.push({
       code: "signature",
-      message: "Ed25519 signature does not verify over canonical payload",
+      message: "embedded public key or signature is malformed",
     });
   }
 
+  try {
+    if (pemFingerprints(signature.publicKeyPem) !== signature.publicKeySha256) {
+      issues.push({ code: "key-fingerprint", message: "embedded public-key fingerprint is inconsistent" });
+    }
+  } catch {
+    issues.push({ code: "key-fingerprint", message: "embedded public key is malformed" });
+  }
+
   if (trustedPublicKeyPem) {
-    const pinned = pemFingerprints(trustedPublicKeyPem);
-    const embedded = pemFingerprints(signature.publicKeyPem);
-    if (pinned !== embedded) {
+    try {
+      const pinned = pemFingerprints(trustedPublicKeyPem);
+      const embedded = pemFingerprints(signature.publicKeyPem);
+      if (pinned !== embedded) {
+        issues.push({
+          code: "trust",
+          message:
+            "embedded public key does not match --trust pin (receipt is self-signed by an unexpected key)",
+        });
+      }
+    } catch {
       issues.push({
         code: "trust",
-        message:
-          "embedded public key does not match --trust pin (receipt is self-signed by an unexpected key)",
+        message: "trusted or embedded public key is malformed",
       });
     }
   }
@@ -114,19 +222,11 @@ export function verifyReceipt(
         });
         continue;
       }
-      if (again.observation !== scenario.observation) {
+      if (canonicalize(scenarioSecurityProjection(scenario)) !==
+          canonicalize(scenarioSecurityProjection(again))) {
         issues.push({
-          code: "scenario-observation",
-          message: `${scenario.actionId}: ${scenario.observation} != ${again.observation}`,
-        });
-      }
-      if (
-        canonicalize(scenario.designIdentityMinCut) !==
-        canonicalize(again.designIdentityMinCut)
-      ) {
-        issues.push({
-          code: "mincut",
-          message: `${scenario.actionId}: design identity min-cut does not recompute`,
+          code: "scenario-derived",
+          message: `${scenario.actionId}: security fields do not fully recompute`,
         });
       }
     }
@@ -135,6 +235,14 @@ export function verifyReceipt(
       code: "recompute",
       message: err instanceof Error ? err.message : String(err),
     });
+  }
+
+  if (payload.lab !== "evidence-quorum-lab" || payload.clock !== "seed-derived" ||
+      payload.issuedAt !== LAB_EPOCH || canonicalize(payload.nonClaims) !== canonicalize(NON_CLAIMS)) {
+    issues.push({ code: "protocol-metadata", message: "receipt protocol metadata is inconsistent" });
+  }
+  if (payload.matchesExpected !== (payload.observation === payload.expectedObservation)) {
+    issues.push({ code: "matches-expected", message: "matchesExpected does not match the observations" });
   }
 
   if (payload.observation === "HEALTHY") {
@@ -155,11 +263,10 @@ export function verifyReceipt(
 }
 
 export function parseReceipt(raw: string): SignedReceipt {
-  const parsed = JSON.parse(raw) as SignedReceipt;
-  if (!parsed.payload || !parsed.signature) {
-    throw new Error("not a signed coverage receipt");
-  }
-  return parsed;
+  const parsed: unknown = JSON.parse(raw);
+  const issues = validateReceiptStructure(parsed);
+  if (issues.length > 0) throw new Error(`not a signed coverage receipt: ${issues[0]?.message}`);
+  return parsed as SignedReceipt;
 }
 
 export function receiptToJson(receipt: SignedReceipt): string {

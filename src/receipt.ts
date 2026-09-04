@@ -1,4 +1,5 @@
 import { hmacHex } from "./crypto.js";
+import { canaryLabel } from "./canary.js";
 import {
   componentSets,
   cutSatisfies,
@@ -194,11 +195,7 @@ export function buildPayload(
 /** Recompute min-cuts and observation from the embedded graph; used by verify. */
 export function recomputeFromPayload(payload: ReceiptPayload): {
   observation: Observation;
-  scenarios: Array<{
-    actionId: string;
-    observation: Observation;
-    designIdentityMinCut: ReturnType<typeof cutToJson>;
-  }>;
+  scenarios: ScenarioResult[];
 } {
   const views: ActionView[] = payload.scenarios.map((scenario) => {
     const action = ACTIONS.find((a) => a.id === scenario.actionId);
@@ -208,7 +205,6 @@ export function recomputeFromPayload(payload: ReceiptPayload): {
     return {
       action: {
         ...action,
-        declaredQuorum: scenario.declaredQuorum,
         paths: action.paths.map((path) => {
           const embedded = scenario.paths.find((p) => p.pathId === path.id);
           return embedded
@@ -228,22 +224,22 @@ export function recomputeFromPayload(payload: ReceiptPayload): {
         pathId: p.pathId,
         status: p.status,
       })),
-      canaryObservations: scenario.canaries.map((c) => ({
-        canaryId: c.canaryId,
-        nonce: c.nonce,
-        status: c.status,
-      })),
+      canaryObservations: action.canaries.map((canary) => {
+        const embedded = scenario.canaries.find((item) => item.canaryId === canary.id);
+        if (!embedded) throw new Error(`missing canary observation for ${canary.id}`);
+        return {
+          canaryId: canary.id,
+          nonce: derivedNonce(payload.tenant.seed, canaryLabel(canary)),
+          status: embedded.status,
+        };
+      }),
     };
   });
 
   const scenarios = views.map(evaluateAction);
   return {
     observation: worstObservation(scenarios.map((s) => s.observation)),
-    scenarios: scenarios.map((s) => ({
-      actionId: s.actionId,
-      observation: s.observation,
-      designIdentityMinCut: s.designIdentityMinCut,
-    })),
+    scenarios,
   };
 }
 

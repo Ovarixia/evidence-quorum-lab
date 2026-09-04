@@ -97,4 +97,50 @@ describe("signed coverage receipt", () => {
     const result = verifyReceipt(again, trustPem);
     assert.equal(result.ok, true, JSON.stringify(result.issues));
   });
+
+  it("rejects a correctly signed receipt that omits a canonical action", () => {
+    const tenant = loadTenant("synth-acme-healthy");
+    const payload = buildPayload(tenant, replayTenant(tenant));
+    payload.scenarios = payload.scenarios.slice(0, 1);
+    payload.observation = "HEALTHY";
+    const result = verifyReceipt(signPayload(payload), trustPem);
+    assert.equal(result.ok, false);
+    assert.ok(result.issues.some((issue) => issue.code === "scenario-set"));
+  });
+
+  it("rejects unknown sensor states instead of treating them as HEALTHY", () => {
+    const tenant = loadTenant("synth-acme-healthy");
+    const payload = buildPayload(tenant, replayTenant(tenant));
+    const firstPath = payload.scenarios[0]?.paths[0];
+    assert.ok(firstPath);
+    (firstPath as { status: string }).status = "bogus";
+    const result = verifyReceipt(signPayload(payload), trustPem);
+    assert.equal(result.ok, false);
+    assert.ok(result.issues.some((issue) => issue.code === "sensor-status"));
+  });
+
+  it("rejects sensor-status values that only stringify to a valid state", () => {
+    const tenant = loadTenant("synth-acme-healthy");
+    const payload = buildPayload(tenant, replayTenant(tenant));
+    const firstPath = payload.scenarios[0]?.paths[0];
+    assert.ok(firstPath);
+    (firstPath as unknown as { status: unknown }).status = ["unreachable"];
+    const result = verifyReceipt(signPayload(payload), trustPem);
+    assert.equal(result.ok, false);
+    assert.ok(result.issues.some((issue) => issue.code === "sensor-status"));
+  });
+
+  it("rejects forged derived cuts and seed-derived canary nonces", () => {
+    const tenant = loadTenant("synth-acme-healthy");
+    const payload = buildPayload(tenant, replayTenant(tenant));
+    const scenario = payload.scenarios[0];
+    assert.ok(scenario);
+    scenario.designComponentMinCut = { finite: true, size: 99, example: ["fiction"] };
+    const canary = scenario.canaries[0];
+    assert.ok(canary);
+    canary.nonce = "attacker-selected";
+    const result = verifyReceipt(signPayload(payload), trustPem);
+    assert.equal(result.ok, false);
+    assert.ok(result.issues.some((issue) => issue.code === "scenario-derived"));
+  });
 });

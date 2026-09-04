@@ -129,6 +129,12 @@ Zero runtime dependencies. Cryptography is `node:crypto` Ed25519.
 
 ---
 
+## Recovery assurance suite
+
+This repository is stage A of [Cyber Recovery Assurance](https://github.com/Ovarixia/cyber-recovery-assurance). The integration runner verifies this lab's native signed receipt, binds its SHA-256 digest into EvidenceEnvelope v1, then permits TrustLink Repair and ReLink Gate to continue only through the signed A→B→C chain.
+
+---
+
 ## License
 
 MIT. See `LICENSE`, `CONTRIBUTING.md`, and `SECURITY.md`.
