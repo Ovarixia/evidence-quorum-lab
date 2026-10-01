@@ -8,6 +8,36 @@ It is not a SIEM, not a connector pack, and not a legal attestation.
 
 *FR — Laboratoire open-source : combien de chemins de preuve indépendants un attaquant doit briser pour rendre une action critique invisible. Un `npm start` rejoue des tenants synthétiques et signe un reçu vérifiable. Ce n’est pas une attestation légale.*
 
+## The demo, on one screen
+
+Tenant `synth-acme-collapsed`. An admin privilege grant still leaves three logs, and every sensor is `present`: the IdP audit, the ITSM ticket, and the SIEM copy. The declared quorum is 2 identities. `idp-superadmin`, `siem-admin`, and `itsm-admin` are aliased to one identity, `platform-superadmin`, so one person can erase every log. The identity min-cut is 1, the quorum is missed, and the run is `DEGRADED`. The WORM canary is present with an empty eraser set, so the cut that includes canaries is unbounded. Deploy and payment in the same tenant stay at identity min-cut 3 (`HEALTHY`); the overall label follows the privilege grant.
+
+Copied from `npx tsx src/cli.ts run --tenant synth-acme-collapsed` (seed `eq-lab-v1/collapsed`):
+
+```text
+tenant     synth-acme-collapsed  (Acme synthetic — IdP, SIEM, and ITSM admins are the same identity)
+seed       eq-lab-v1/collapsed
+overall    DEGRADED   expected DEGRADED   ok
+
+  Admin privilege grant  [DEGRADED]
+    declared quorum (identities): 2
+    design identity min-cut:     1  {platform-superadmin}
+    design component min-cut:    3
+    with canaries (identity):    unbounded (WORM / no eraser)
+    intact identity min-cut:     1
+      path  present       admin.idp-audit  writer=idp-service  erasers=platform-superadmin  lab://idp/audit/privilege-grants
+      path  present       admin.itsm  writer=sso-provisioner  erasers=platform-superadmin  lab://itsm/changes
+      path  present       admin.siem  writer=siem-ingester  erasers=platform-superadmin  lab://siem/indexes/iam
+      canary present      admin.canary  nonce=c4da7bea3f52…  erasers=∅
+```
+
+Verification of the receipt that run wrote (`npx tsx src/cli.ts verify receipts/synth-acme-collapsed.receipt.json --trust fixtures/keys/demo-ed25519.pub.pem`):
+
+```text
+VALID  receipts/synth-acme-collapsed.receipt.json
+  tenant=synth-acme-collapsed  observation=DEGRADED  sha256=d922ac994e9ba094ab23bb5ec1016cbd6a2104fdf1deac51cda38b7da8d228f1
+```
+
 ---
 
 ## Problem
